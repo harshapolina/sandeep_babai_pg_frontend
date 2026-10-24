@@ -7,8 +7,8 @@ import { Button, Card, Input } from '../components/ui'
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('admin@pgplatform.local')
-  const [password, setPassword] = useState('Admin@12345')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function onSubmit(e: FormEvent) {
@@ -38,15 +38,14 @@ export default function LoginPage() {
             Has Tracker
           </h1>
           <p className="mt-4 max-w-md text-lg text-text-secondary">
-            Manage properties, beds, tenants, rent, and maintenance from one calm,
-            craft-focused workspace.
+            Sign in to access your Has Tracker account.
           </p>
         </div>
 
         <Card className="w-full max-w-md !bg-background shadow-[0_24px_48px_rgba(28,25,23,0.08)]">
           <h2 className="font-display text-2xl">Sign in</h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Use your admin or tenant credentials.
+            Enter your email and password to continue.
           </p>
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
             <Input
@@ -55,6 +54,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
             />
             <Input
               label="Password"
@@ -62,17 +62,12 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
             />
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
-          <div className="mt-6 rounded-lg border border-border bg-surface p-3 text-xs text-text-secondary">
-            <div className="font-semibold text-text-primary">Demo accounts</div>
-            <div className="mt-1">Admin: admin@pgplatform.local / Admin@12345</div>
-            <div>Tenant: tenant@pgplatform.local / Tenant@12345</div>
-            <div>Staff: maintenance@pgplatform.local / Staff@12345</div>
-          </div>
         </Card>
       </div>
     </div>
