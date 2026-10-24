@@ -4,19 +4,43 @@ import toast from 'react-hot-toast'
 import api from '../../lib/api'
 import { Badge, Button, Card, Skeleton, formatINR } from '../../components/ui'
 
+const HOME_CACHE = 'pg_tenant_home'
+
 export default function TenantHomePage() {
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const cached = (() => {
+    try {
+      const raw = sessionStorage.getItem(HOME_CACHE)
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })()
+  const [data, setData] = useState<any>(cached)
+  const [loading, setLoading] = useState(!cached)
 
   useEffect(() => {
+    let alive = true
     api
       .get('/tenant-portal/home')
-      .then((r) => setData(r.data.data))
+      .then((r) => {
+        if (!alive) return
+        setData(r.data.data)
+        try {
+          sessionStorage.setItem(HOME_CACHE, JSON.stringify(r.data.data))
+        } catch {
+          /* ignore */
+        }
+      })
       .catch((e) => toast.error(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="space-y-3">
         <Skeleton className="h-28" />

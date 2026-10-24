@@ -9,17 +9,51 @@ import {
   EmptyState,
   Input,
   Select,
+  Skeleton,
   Textarea,
 } from '../../components/ui'
 
+const LIST_CACHE = 'pg_tenant_tickets'
+
+function readCache<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : null
+  } catch {
+    return null
+  }
+}
+
+function writeCache(key: string, value: unknown) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* ignore quota */
+  }
+}
+
 export function TenantTicketsListPage() {
-  const [items, setItems] = useState<any[]>([])
+  const cached = readCache<any[]>(LIST_CACHE)
+  const [items, setItems] = useState<any[]>(cached || [])
+  const [loading, setLoading] = useState(!cached?.length)
 
   useEffect(() => {
+    let alive = true
     api
       .get('/tickets/tenant')
-      .then((r) => setItems(r.data.data || []))
+      .then((r) => {
+        if (!alive) return
+        const list = r.data.data || []
+        setItems(list)
+        writeCache(LIST_CACHE, list)
+      })
       .catch((e) => toast.error(e.message))
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   return (
@@ -30,8 +64,20 @@ export function TenantTicketsListPage() {
           <Button size="sm">New</Button>
         </Link>
       </div>
-      {!items.length ? (
-        <EmptyState title="No tickets yet" action={<Link to="/tenant/tickets/new"><Button>Raise a ticket</Button></Link>} />
+      {loading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+        </div>
+      ) : !items.length ? (
+        <EmptyState
+          title="No tickets yet"
+          action={
+            <Link to="/tenant/tickets/new">
+              <Button>Raise a ticket</Button>
+            </Link>
+          }
+        />
       ) : (
         items.map((t) => (
           <Link key={t._id} to={`/tenant/tickets/${t._id}`}>
@@ -67,6 +113,7 @@ export function TenantTicketNewPage() {
     try {
       const { data } = await api.post('/tickets/tenant', form)
       toast.success('Ticket submitted')
+      sessionStorage.removeItem(LIST_CACHE)
       navigate(`/tenant/tickets/${data.data._id}`)
     } catch (err: any) {
       toast.error(err.message)
@@ -128,6 +175,8 @@ export function TenantTicketNewPage() {
 export function TenantTicketDetailPage() {
   const { id } = useParams()
   const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
   const [reason, setReason] = useState('')
 
   async function load() {
@@ -136,29 +185,69 @@ export function TenantTicketDetailPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => toast.error(e.message))
+    let alive = true
+    setLoading(true)
+    // Prefer list cache for instant first paint
+    const cached = readCache<any[]>(LIST_CACHE)?.find((t) => t._id === id)
+    if (cached) {
+      setData({ ticket: cached, comments: [] })
+      setLoading(false)
+    }
+    load()
+      .catch((e) => toast.error(e.message))
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
+    return () => {
+      alive = false
+    }
   }, [id])
 
   async function confirm() {
+    if (busy || !id) return
+    setBusy(true)
+    const prev = data
+    setData((d: any) =>
+      d ? { ...d, ticket: { ...d.ticket, status: 'closed' } } : d
+    )
     try {
       await api.post(`/tickets/tenant/${id}/confirm`)
       toast.success('Thanks — ticket closed')
-      load()
+      sessionStorage.removeItem(LIST_CACHE)
+      load().catch(() => {})
     } catch (err: any) {
+      setData(prev)
       toast.error(err.message)
+    } finally {
+      setBusy(false)
     }
   }
 
   async function reopen() {
-    if (!reason) return toast.error('Please share a reason')
+    if (busy || !id) return
+    if (!reason.trim()) return toast.error('Please share a reason')
+    setBusy(true)
     try {
       await api.post(`/tickets/tenant/${id}/reopen`, { reason })
       toast.success('Ticket reopened')
       setReason('')
-      load()
+      sessionStorage.removeItem(LIST_CACHE)
+      await load()
     } catch (err: any) {
       toast.error(err.message)
+    } finally {
+      setBusy(false)
     }
+  }
+
+  if (loading && !data) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-40" />
+        <Skeleton className="h-28 rounded-xl" />
+        <Skeleton className="h-40 rounded-xl" />
+      </div>
+    )
   }
 
   if (!data) return null
@@ -186,15 +275,18 @@ export function TenantTicketDetailPage() {
         <Card>
           <p className="text-sm">Staff marked this resolved. Is the issue fixed?</p>
           <div className="mt-3 flex gap-2">
-            <Button onClick={confirm}>Confirm fixed</Button>
+            <Button onClick={confirm} disabled={busy}>
+              {busy ? 'Saving…' : 'Confirm fixed'}
+            </Button>
           </div>
           <Input
             className="mt-3"
             label="Or reopen with reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
+            disabled={busy}
           />
-          <Button className="mt-2" variant="secondary" onClick={reopen}>
+          <Button className="mt-2" variant="secondary" onClick={reopen} disabled={busy}>
             Reopen ticket
           </Button>
         </Card>
