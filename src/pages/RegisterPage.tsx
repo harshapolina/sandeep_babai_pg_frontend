@@ -213,7 +213,7 @@ export default function RegisterPage() {
               <div className="mt-0.5 font-mono text-text-primary">
                 {createdCreds.tempPassword}
               </div>
-              <p className="mt-2 text-[11px] text-neutral">Save this password — shown once.</p>
+              <p className="mt-2 text-[11px] text-neutral">Save this password â€” shown once.</p>
             </div>
           )}
           <Link
@@ -249,7 +249,7 @@ export default function RegisterPage() {
       </header>
 
       <form className="space-y-6" onSubmit={onSubmit} noValidate>
-        {/* Property — always first */}
+        {/* Property â€” always first */}
         <div>
           <Select
             label="Property"
@@ -261,7 +261,7 @@ export default function RegisterPage() {
             {(info.properties || []).map((p: any) => (
               <option key={p.id} value={String(p.id)}>
                 {p.name}
-                {p.city ? ` · ${p.city}` : ''}
+                {p.city ? ` Â· ${p.city}` : ''}
               </option>
             ))}
           </Select>
@@ -400,7 +400,7 @@ export default function RegisterPage() {
 
         <div className="pt-1">
           <Button type="submit" size="lg" className="w-full" disabled={submitting}>
-            {submitting ? 'Submitting…' : cfg.ctaLabel}
+            {submitting ? 'Submittingâ€¦' : cfg.ctaLabel}
           </Button>
           <p className="mt-3 text-center text-[11px] text-neutral">
             Approval required before a bed is assigned.

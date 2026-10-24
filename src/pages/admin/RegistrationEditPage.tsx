@@ -335,7 +335,7 @@ export default function RegistrationEditPage() {
           </Button>
           <Button type="submit" disabled={saving}>
             <Save size={14} />
-            {saving ? 'Saving…' : 'Save form'}
+            {saving ? 'Savingâ€¦' : 'Save form'}
           </Button>
         </div>
       </form>
