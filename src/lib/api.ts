@@ -24,14 +24,20 @@ api.interceptors.response.use(
   (error) => {
     const message =
       error.response?.data?.message || error.message || 'Request failed'
+    // Only force logout on clear auth failures (avoid kicking out on transient API blips)
     if (error.response?.status === 401) {
+      const authFail = /auth|token|expired|invalid email|password|unauthorized/i.test(
+        String(message)
+      )
       const path = window.location.pathname
-      if (!path.startsWith('/login') && !path.startsWith('/register')) {
+      if (
+        authFail &&
+        !path.startsWith('/login') &&
+        !path.startsWith('/register')
+      ) {
         localStorage.removeItem('pg_token')
         localStorage.removeItem('pg_user')
-        if (!path.startsWith('/register')) {
-          window.location.href = '/login'
-        }
+        window.location.href = '/login'
       }
     }
     return Promise.reject(new Error(message))

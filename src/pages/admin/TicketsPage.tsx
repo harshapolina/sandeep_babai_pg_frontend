@@ -52,10 +52,7 @@ export default function TicketsPage() {
     }
   })()
 
-  const [items, setItems] = useState<any[]>(cached?.items || [])
-  const [statusCounts, setStatusCounts] = useState<Record<string, number>>(
-    cached?.statusCounts || {}
-  )
+  const [allItems, setAllItems] = useState<any[]>(cached?.items || [])
   const [status, setStatus] = useState('')
   const [staff, setStaff] = useState<any[]>([])
   const [detail, setDetail] = useState<any>(null)
@@ -65,16 +62,26 @@ export default function TicketsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const t of allItems) {
+      const key = t.status || 'open'
+      counts[key] = (counts[key] || 0) + 1
+    }
+    return counts
+  }, [allItems])
+
+  const items = useMemo(() => {
+    if (!status) return allItems
+    return allItems.filter((t) => t.status === status)
+  }, [allItems, status])
+
   async function load() {
-    const { data } = await api.get('/tickets', {
-      params: { status: status || undefined, limit: 50 },
-    })
+    const { data } = await api.get('/tickets', { params: { limit: 50 } })
     const list = data.data || []
-    const counts = data.statusCounts || {}
-    setItems(list)
-    setStatusCounts(counts)
+    setAllItems(list)
     try {
-      sessionStorage.setItem(LIST_CACHE, JSON.stringify({ items: list, statusCounts: counts }))
+      sessionStorage.setItem(LIST_CACHE, JSON.stringify({ items: list }))
     } catch {
       /* ignore */
     }
@@ -82,7 +89,7 @@ export default function TicketsPage() {
 
   useEffect(() => {
     let alive = true
-    setListLoading(!items.length)
+    setListLoading(!allItems.length)
     load()
       .catch((e) => toast.error(e.message))
       .finally(() => {
@@ -98,7 +105,7 @@ export default function TicketsPage() {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, isAdmin])
+  }, [isAdmin])
 
   const totalOpen = useMemo(() => {
     return (
@@ -128,20 +135,10 @@ export default function TicketsPage() {
     if (!detail?.ticket?._id || saving) return
     const id = detail.ticket._id
     const prevDetail = detail
-    const prevItems = items
-    const prevCounts = statusCounts
+    const prevItems = allItems
 
     setDetail((d: any) => (d ? { ...d, ticket: { ...d.ticket, ...payload } } : d))
-    setItems((list) => list.map((t) => (t._id === id ? { ...t, ...payload } : t)))
-    if (payload.status) {
-      setStatusCounts((c) => {
-        const next = { ...c }
-        const old = prevDetail.ticket.status
-        if (old && next[old] > 0) next[old] -= 1
-        next[payload.status] = (next[payload.status] || 0) + 1
-        return next
-      })
-    }
+    setAllItems((list) => list.map((t) => (t._id === id ? { ...t, ...payload } : t)))
 
     setSaving(true)
     try {
@@ -150,8 +147,7 @@ export default function TicketsPage() {
       load().catch(() => {})
     } catch (err: any) {
       setDetail(prevDetail)
-      setItems(prevItems)
-      setStatusCounts(prevCounts)
+      setAllItems(prevItems)
       toast.error(err.message)
     } finally {
       setSaving(false)
