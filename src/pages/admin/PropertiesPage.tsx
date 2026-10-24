@@ -380,7 +380,7 @@ export default function PropertiesPage() {
                         </button>
                         {menuId === p._id && (
                           <div
-                            className="absolute right-0 bottom-full z-20 mb-1 w-40 overflow-hidden rounded-lg border border-border bg-background py-1 shadow-[0_12px_28px_rgba(28,25,23,0.12)]"
+                            className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-lg border border-border bg-background py-1 shadow-[0_12px_28px_rgba(28,25,23,0.12)]"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button

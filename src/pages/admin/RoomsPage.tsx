@@ -1214,22 +1214,34 @@ export default function RoomsPage() {
             Move {selectedBed?.currentTenant?.fullName} from Room {selectedRoom?.roomNumber} · Bed{' '}
             {selectedBed?.bedNumber}
           </p>
-          <Select
-            label="New available bed"
-            value={transferBedId}
-            onChange={(e) => setTransferBedId(e.target.value)}
-            required
-          >
-            <option value="">Select bed</option>
-            {availableBedsForTransfer.map((b) => (
-              <option key={b._id} value={b._id}>
-                Room {b.roomNumber} · Bed {b.bedNumber}
-              </option>
-            ))}
-          </Select>
-          {!availableBedsForTransfer.length && (
-            <p className="text-sm text-error">No available beds to transfer into.</p>
-          )}
+          <div>
+            <div className="mb-1.5 text-sm font-semibold text-text-primary">New available bed</div>
+            {availableBedsForTransfer.length ? (
+              <div className="max-h-52 overflow-y-auto rounded-lg border border-border bg-white">
+                {availableBedsForTransfer.map((b, i) => {
+                  const active = transferBedId === b._id
+                  return (
+                    <button
+                      key={b._id}
+                      type="button"
+                      onClick={() => setTransferBedId(b._id)}
+                      className={`flex w-full items-center px-3 py-2.5 text-left text-sm transition ${
+                        i > 0 ? 'border-t border-border' : ''
+                      } ${
+                        active
+                          ? 'bg-stone-900 font-semibold text-white'
+                          : 'text-text-primary hover:bg-stone-50'
+                      }`}
+                    >
+                      Room {b.roomNumber} · Bed {b.bedNumber}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-error">No available beds to transfer into.</p>
+            )}
+          </div>
           <Button type="submit" className="w-full" disabled={!transferBedId}>
             Transfer
           </Button>
