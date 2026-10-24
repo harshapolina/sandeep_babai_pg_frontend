@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../lib/auth'
 import { Button, Card, Input } from '../components/ui'
@@ -17,8 +17,7 @@ export default function LoginPage() {
     try {
       const user = await login(email, password)
       toast.success(`Welcome back, ${user.fullName.split(' ')[0]}`)
-      if (user.role === 'tenant') navigate('/tenant')
-      else navigate('/admin')
+      navigate('/admin')
     } catch (err: any) {
       toast.error(err.message || 'Login failed')
     } finally {
@@ -32,20 +31,20 @@ export default function LoginPage() {
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col justify-center gap-10 px-4 py-12 lg:flex-row lg:items-center lg:gap-16">
         <div className="max-w-xl">
           <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-            PG Management
+            Staff access
           </p>
           <h1 className="mt-3 font-display text-5xl leading-tight text-text-primary md:text-[64px]">
             Has Tracker
           </h1>
           <p className="mt-4 max-w-md text-lg text-text-secondary">
-            Sign in to access your Has Tracker account.
+            Sign in to manage properties, rooms, rent, and maintenance.
           </p>
         </div>
 
         <Card className="w-full max-w-md !bg-background shadow-[0_24px_48px_rgba(28,25,23,0.08)]">
-          <h2 className="font-display text-2xl">Sign in</h2>
+          <h2 className="font-display text-2xl">Staff sign in</h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Enter your email and password to continue.
+            Enter your staff email and password.
           </p>
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
             <Input
@@ -68,6 +67,12 @@ export default function LoginPage() {
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
+          <p className="mt-5 text-center text-xs text-neutral">
+            Tenant?{' '}
+            <Link to="/tenant/login" className="font-semibold text-primary hover:underline">
+              Sign in with email only
+            </Link>
+          </p>
         </Card>
       </div>
     </div>

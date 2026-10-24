@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import AdminLayout from './layouts/AdminLayout'
 import TenantLayout from './layouts/TenantLayout'
 import LoginPage from './pages/LoginPage'
+import TenantLoginPage from './pages/TenantLoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import PropertiesPage from './pages/admin/PropertiesPage'
@@ -64,6 +65,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/tenant/login" element={<TenantLoginPage />} />
         <Route path="/register/:token" element={<RegisterPage />} />
 
         <Route element={<ProtectedRoute roles={[...STAFF_ROLES]} />}>

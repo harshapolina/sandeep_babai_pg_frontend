@@ -37,7 +37,9 @@ api.interceptors.response.use(
       ) {
         localStorage.removeItem('pg_token')
         localStorage.removeItem('pg_user')
-        window.location.href = '/login'
+        const goTenant =
+          path.startsWith('/tenant') && !path.startsWith('/tenant/login')
+        window.location.href = goTenant ? '/tenant/login' : '/login'
       }
     }
     return Promise.reject(new Error(message))

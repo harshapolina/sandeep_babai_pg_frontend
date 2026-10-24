@@ -33,6 +33,7 @@ interface AuthState {
   tenant: any | null
   loading: boolean
   login: (email: string, password: string) => Promise<AuthUser>
+  loginTenant: (email: string) => Promise<AuthUser>
   logout: () => void
   refresh: () => Promise<void>
   isStaff: boolean
@@ -92,12 +93,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.user as AuthUser
   }, [])
 
+  const loginTenant = useCallback(async (email: string) => {
+    const { data } = await api.post('/auth/tenant-login', { email })
+    localStorage.setItem('pg_token', data.token)
+    localStorage.setItem('pg_user', JSON.stringify(data.user))
+    setUser(data.user)
+    setTenant(data.tenant)
+    return data.user as AuthUser
+  }, [])
+
   const logout = useCallback(() => {
+    const wasTenant = user?.role === 'tenant'
     localStorage.removeItem('pg_token')
     localStorage.removeItem('pg_user')
     setUser(null)
     setTenant(null)
-  }, [])
+    window.location.href = wasTenant ? '/tenant/login' : '/login'
+  }, [user?.role])
 
   const value = useMemo(
     () => ({
@@ -105,13 +117,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       tenant,
       loading,
       login,
+      loginTenant,
       logout,
       refresh,
       isStaff: !!user && STAFF_ROLES.includes(user.role),
       isAdmin: user?.role === 'org_admin',
       isTenant: user?.role === 'tenant',
     }),
-    [user, tenant, loading, login, logout, refresh]
+    [user, tenant, loading, login, loginTenant, logout, refresh]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

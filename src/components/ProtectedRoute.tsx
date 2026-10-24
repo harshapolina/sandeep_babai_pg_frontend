@@ -18,7 +18,10 @@ export function ProtectedRoute({
     )
   }
 
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) {
+    const wantsTenant = roles?.length === 1 && roles[0] === 'tenant'
+    return <Navigate to={wantsTenant ? '/tenant/login' : '/login'} replace />
+  }
 
   if (roles && !roles.includes(user.role)) {
     if (isTenant) return <Navigate to="/tenant" replace />

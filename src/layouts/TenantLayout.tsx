@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 import {
   Bell,
   CreditCard,
@@ -23,7 +23,6 @@ const nav = [
 
 export default function TenantLayout() {
   const { user, logout } = useAuth()
-  const navigate = useNavigate()
 
   return (
     <div className="mx-auto min-h-screen max-w-lg bg-background pb-24">
@@ -36,10 +35,7 @@ export default function TenantLayout() {
           <div className="flex items-center gap-2">
             <Bell size={18} className="text-text-secondary" />
             <button
-              onClick={() => {
-                logout()
-                navigate('/login')
-              }}
+              onClick={() => logout()}
               className="rounded-lg p-2 text-text-secondary hover:bg-surface-raised"
               aria-label="Sign out"
             >
