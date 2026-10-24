@@ -52,6 +52,7 @@ export function TenantTicketsListPage() {
 
 export function TenantTicketNewPage() {
   const navigate = useNavigate()
+  const [submitting, setSubmitting] = useState(false)
   const [form, setForm] = useState({
     category: 'plumbing',
     title: '',
@@ -61,12 +62,15 @@ export function TenantTicketNewPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (submitting) return
+    setSubmitting(true)
     try {
       const { data } = await api.post('/tickets/tenant', form)
       toast.success('Ticket submitted')
       navigate(`/tenant/tickets/${data.data._id}`)
     } catch (err: any) {
       toast.error(err.message)
+      setSubmitting(false)
     }
   }
 
@@ -75,24 +79,46 @@ export function TenantTicketNewPage() {
       <h1 className="font-display text-3xl">Raise a ticket</h1>
       <Card>
         <form className="space-y-3" onSubmit={onSubmit}>
-          <Select label="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-            <option value="plumbing">Plumbing</option>
-            <option value="electrical">Electrical</option>
-            <option value="cleaning">Cleaning</option>
-            <option value="furniture">Furniture</option>
-            <option value="internet">Internet</option>
-            <option value="water_supply">Water supply</option>
-            <option value="other">Other</option>
-          </Select>
-          <Input label="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
-          <Textarea label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
-          <Select label="Priority" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </Select>
-          <Button type="submit" className="w-full">Submit ticket</Button>
+          <fieldset disabled={submitting} className="space-y-3 border-0 p-0">
+            <Select
+              label="Category"
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+            >
+              <option value="plumbing">Plumbing</option>
+              <option value="electrical">Electrical</option>
+              <option value="cleaning">Cleaning</option>
+              <option value="furniture">Furniture</option>
+              <option value="internet">Internet</option>
+              <option value="water_supply">Water supply</option>
+              <option value="other">Other</option>
+            </Select>
+            <Input
+              label="Title"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              required
+            />
+            <Textarea
+              label="Description"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              required
+            />
+            <Select
+              label="Priority"
+              value={form.priority}
+              onChange={(e) => setForm({ ...form, priority: e.target.value })}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </Select>
+          </fieldset>
+          <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting ? 'Submitting…' : 'Submit ticket'}
+          </Button>
         </form>
       </Card>
     </div>
