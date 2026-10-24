@@ -1,27 +1,53 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import api from '../../lib/api'
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Input,
-  Modal,
-  PageHeader,
-  Select,
-} from '../../components/ui'
+import { Button, EmptyState, Input, Modal, Select, Skeleton, cn } from '../../components/ui'
 import { useAuth } from '../../lib/auth'
+
+const FILTERS = [
+  { id: '', label: 'All' },
+  { id: 'open', label: 'Open' },
+  { id: 'assigned', label: 'Assigned' },
+  { id: 'in_progress', label: 'In progress' },
+  { id: 'resolved_awaiting_confirmation', label: 'Awaiting tenant' },
+  { id: 'closed', label: 'Closed' },
+  { id: 'reopened', label: 'Reopened' },
+] as const
+
+function statusLabel(s: string) {
+  return String(s || '').replaceAll('_', ' ')
+}
+
+function statusTone(s: string) {
+  if (s === 'closed') return 'text-success'
+  if (s?.includes('resolved')) return 'text-warning'
+  if (s === 'reopened' || s === 'open') return 'text-primary'
+  return 'text-text-secondary'
+}
+
+const LIST_CACHE = 'pg_admin_tickets'
 
 export default function TicketsPage() {
   const { isAdmin } = useAuth()
-  const [items, setItems] = useState<any[]>([])
-  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
+  const cached = (() => {
+    try {
+      const raw = sessionStorage.getItem(LIST_CACHE)
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })()
+
+  const [items, setItems] = useState<any[]>(cached?.items || [])
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>(
+    cached?.statusCounts || {}
+  )
   const [status, setStatus] = useState('')
   const [staff, setStaff] = useState<any[]>([])
   const [detail, setDetail] = useState<any>(null)
   const [comment, setComment] = useState('')
   const [assignTo, setAssignTo] = useState('')
+  const [listLoading, setListLoading] = useState(!cached?.items?.length)
   const [detailLoading, setDetailLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -29,27 +55,43 @@ export default function TicketsPage() {
     const { data } = await api.get('/tickets', {
       params: { status: status || undefined, limit: 50 },
     })
-    setItems(data.data || [])
-    setStatusCounts(data.statusCounts || {})
+    const list = data.data || []
+    const counts = data.statusCounts || {}
+    setItems(list)
+    setStatusCounts(counts)
+    try {
+      sessionStorage.setItem(LIST_CACHE, JSON.stringify({ items: list, statusCounts: counts }))
+    } catch {
+      /* ignore */
+    }
   }
 
   useEffect(() => {
-    load().catch((e) => toast.error(e.message))
+    let alive = true
+    setListLoading(!cached?.items?.length)
+    load()
+      .catch((e) => toast.error(e.message))
+      .finally(() => {
+        if (alive) setListLoading(false)
+      })
     if (isAdmin) {
       api
         .get('/staff')
         .then((r) => setStaff(r.data.data || []))
         .catch(() => {})
     }
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, isAdmin])
 
-  /** Open instantly from list row; hydrate comments in background */
+  const totalOpen = useMemo(() => {
+    return (statusCounts.open || 0) + (statusCounts.assigned || 0) + (statusCounts.in_progress || 0) + (statusCounts.reopened || 0)
+  }, [statusCounts])
+
   function openDetail(ticket: any) {
-    setDetail({
-      ticket,
-      comments: [],
-      attachments: [],
-    })
+    setDetail({ ticket, comments: [], attachments: [] })
     setAssignTo(ticket.assignedTo?._id || ticket.assignedTo || '')
     setComment('')
     setDetailLoading(true)
@@ -63,24 +105,15 @@ export default function TicketsPage() {
       .finally(() => setDetailLoading(false))
   }
 
-  async function updateTicket(payload: any, opts?: { close?: boolean }) {
+  async function updateTicket(payload: any) {
     if (!detail?.ticket?._id || saving) return
     const id = detail.ticket._id
     const prevDetail = detail
     const prevItems = items
+    const prevCounts = statusCounts
 
-    // Optimistic UI — no waiting for round-trip before feedback
-    setDetail((d: any) =>
-      d
-        ? {
-            ...d,
-            ticket: { ...d.ticket, ...payload },
-          }
-        : d
-    )
-    setItems((list) =>
-      list.map((t) => (t._id === id ? { ...t, ...payload } : t))
-    )
+    setDetail((d: any) => (d ? { ...d, ticket: { ...d.ticket, ...payload } } : d))
+    setItems((list) => list.map((t) => (t._id === id ? { ...t, ...payload } : t)))
     if (payload.status) {
       setStatusCounts((c) => {
         const next = { ...c }
@@ -94,13 +127,12 @@ export default function TicketsPage() {
     setSaving(true)
     try {
       await api.patch(`/tickets/${id}`, payload)
-      toast.success('Ticket updated')
-      if (opts?.close) setDetail(null)
-      // Soft refresh list in background (don't block UI)
+      toast.success('Updated')
       load().catch(() => {})
     } catch (err: any) {
       setDetail(prevDetail)
       setItems(prevItems)
+      setStatusCounts(prevCounts)
       toast.error(err.message)
     } finally {
       setSaving(false)
@@ -110,78 +142,107 @@ export default function TicketsPage() {
   async function addComment(e: FormEvent) {
     e.preventDefault()
     if (!comment.trim() || !detail?.ticket?._id || saving) return
+    const body = comment.trim()
+    setComment('')
     setSaving(true)
     try {
-      await api.post(`/tickets/${detail.ticket._id}/comments`, { body: comment })
-      setComment('')
-      const { data } = await api.get(`/tickets/${detail.ticket._id}`)
-      setDetail(data.data)
+      const { data } = await api.post(`/tickets/${detail.ticket._id}/comments`, { body })
+      setDetail((d: any) =>
+        d ? { ...d, comments: [...(d.comments || []), data.data] } : d
+      )
     } catch (err: any) {
+      setComment(body)
       toast.error(err.message)
     } finally {
       setSaving(false)
     }
   }
 
-  return (
-    <div>
-      <PageHeader
-        title="Maintenance tickets"
-        subtitle="Assign, update, resolve — tap a card to open instantly"
-        actions={
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-56">
-            <option value="">All statuses</option>
-            {Object.keys(statusCounts).map((s) => (
-              <option key={s} value={s}>
-                {s.replaceAll('_', ' ')} ({statusCounts[s]})
-              </option>
-            ))}
-          </Select>
-        }
-      />
+  const ticket = detail?.ticket
+  const canResolve =
+    ticket &&
+    !['resolved_awaiting_confirmation', 'closed'].includes(ticket.status)
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {Object.entries(statusCounts).map(([k, v]) => (
-          <Badge
-            key={k}
-            tone={k.includes('resolved') ? 'accent' : k === 'closed' ? 'success' : 'neutral'}
-          >
-            {String(k).replaceAll('_', ' ')}: {String(v)}
-          </Badge>
-        ))}
+  return (
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-text-primary">
+            Maintenance
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            {totalOpen} active · {statusCounts.closed || 0} closed
+          </p>
+        </div>
       </div>
 
-      {!items.length ? (
+      <div className="mb-4 flex gap-1 overflow-x-auto pb-1">
+        {FILTERS.map((f) => {
+          const count = f.id ? statusCounts[f.id] || 0 : Object.values(statusCounts).reduce((a, b) => a + b, 0)
+          const active = status === f.id
+          return (
+            <button
+              key={f.id || 'all'}
+              type="button"
+              onClick={() => setStatus(f.id)}
+              className={cn(
+                'shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                active
+                  ? 'bg-white text-text-primary shadow-sm ring-1 ring-border'
+                  : 'text-text-secondary hover:text-text-primary'
+              )}
+            >
+              {f.label}
+              {count > 0 && (
+                <span className="ml-1.5 tabular-nums text-neutral">{count}</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {listLoading && !items.length ? (
+        <div className="overflow-hidden rounded-xl border border-border bg-white">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 rounded-none border-b border-border last:border-0" />
+          ))}
+        </div>
+      ) : !items.length ? (
         <EmptyState title="No tickets" />
       ) : (
-        <div className="space-y-3">
-          {items.map((t) => (
-            <Card
+        <div className="overflow-hidden rounded-xl border border-border bg-white">
+          {items.map((t, i) => (
+            <button
               key={t._id}
-              className="cursor-pointer transition hover:border-primary/40"
+              type="button"
               onClick={() => openDetail(t)}
+              className={cn(
+                'flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface/80',
+                i > 0 && 'border-t border-border'
+              )}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold text-primary">{t.ticketNumber}</div>
-                  <div className="font-display text-xl">{t.title}</div>
-                  <div className="mt-1 text-sm text-text-secondary">
-                    {t.tenant?.fullName} · {t.property?.name} · Room{' '}
-                    {t.room?.roomNumber || '—'}
-                  </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="font-mono text-[11px] font-medium text-neutral">
+                    {t.ticketNumber}
+                  </span>
+                  <span className="text-sm font-semibold text-text-primary truncate">
+                    {t.title}
+                  </span>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                  <Badge>{t.status.replaceAll('_', ' ')}</Badge>
-                  <Badge
-                    tone={
-                      t.priority === 'urgent' || t.priority === 'high' ? 'error' : 'neutral'
-                    }
-                  >
-                    {t.priority}
-                  </Badge>
+                <div className="mt-0.5 truncate text-xs text-text-secondary">
+                  {t.tenant?.fullName || '—'}
+                  {t.property?.name ? ` · ${t.property.name}` : ''}
+                  {t.room?.roomNumber ? ` · R${t.room.roomNumber}` : ''}
                 </div>
               </div>
-            </Card>
+              <div className="shrink-0 text-right">
+                <div className={cn('text-xs font-semibold capitalize', statusTone(t.status))}>
+                  {statusLabel(t.status)}
+                </div>
+                <div className="mt-0.5 text-[11px] capitalize text-neutral">{t.priority}</div>
+              </div>
+            </button>
           ))}
         </div>
       )}
@@ -189,35 +250,39 @@ export default function TicketsPage() {
       <Modal
         open={!!detail}
         onClose={() => setDetail(null)}
-        title={detail?.ticket?.ticketNumber || 'Ticket'}
+        title={ticket?.ticketNumber || 'Ticket'}
         wide
       >
-        {detail && (
-          <div className="space-y-4">
+        {ticket && (
+          <div className="space-y-5">
             <div>
-              <h3 className="font-display text-2xl">{detail.ticket.title}</h3>
-              <p className="mt-2 text-sm text-text-secondary">{detail.ticket.description}</p>
-              {detail.ticket.resolutionNotes && (
-                <p className="mt-2 rounded-lg bg-surface p-3 text-sm">
-                  <strong>Resolution:</strong> {detail.ticket.resolutionNotes}
-                </p>
-              )}
+              <h3 className="text-lg font-semibold text-text-primary">{ticket.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
+                {ticket.description}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-neutral">
+                <span className={cn('font-semibold capitalize', statusTone(ticket.status))}>
+                  {statusLabel(ticket.status)}
+                </span>
+                <span className="capitalize">{ticket.priority} priority</span>
+                {ticket.tenant?.fullName && <span>{ticket.tenant.fullName}</span>}
+                {ticket.property?.name && <span>{ticket.property.name}</span>}
+                {ticket.room?.roomNumber && <span>Room {ticket.room.roomNumber}</span>}
+              </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Select
                 label="Status"
-                value={detail.ticket.status}
+                value={ticket.status}
                 disabled={saving}
                 onChange={(e) => updateTicket({ status: e.target.value })}
               >
                 <option value="open">Open</option>
                 <option value="assigned">Assigned</option>
                 <option value="in_progress">In progress</option>
-                <option value="resolved_awaiting_confirmation">
-                  Resolved, awaiting confirmation
-                </option>
-                <option value="closed">Closed (admin override)</option>
+                <option value="resolved_awaiting_confirmation">Resolved — await tenant</option>
+                <option value="closed">Closed</option>
                 <option value="reopened">Reopened</option>
               </Select>
               <Select
@@ -226,47 +291,57 @@ export default function TicketsPage() {
                 disabled={saving}
                 onChange={(e) => {
                   setAssignTo(e.target.value)
-                  updateTicket({ assignedTo: e.target.value, status: 'assigned' })
+                  updateTicket({
+                    assignedTo: e.target.value || null,
+                    ...(e.target.value ? { status: 'assigned' } : {}),
+                  })
                 }}
               >
                 <option value="">Unassigned</option>
                 {staff.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.fullName} ({s.role})
+                    {s.fullName}
                   </option>
                 ))}
               </Select>
+            </div>
+
+            {canResolve && (
               <Button
+                className="w-full sm:w-auto"
                 disabled={saving}
-                onClick={() =>
-                  updateTicket({ status: 'resolved_awaiting_confirmation' })
-                }
+                onClick={() => updateTicket({ status: 'resolved_awaiting_confirmation' })}
               >
                 {saving ? 'Saving…' : 'Mark resolved'}
               </Button>
-            </div>
+            )}
 
-            <div>
-              <div className="flex items-center justify-between">
-                <h4 className="font-semibold">Activity</h4>
+            <div className="border-t border-border pt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-text-primary">Activity</h4>
                 {detailLoading && (
-                  <span className="text-xs text-text-secondary">Loading replies…</span>
+                  <span className="text-[11px] text-neutral">Loading…</span>
                 )}
               </div>
-              <div className="mt-2 space-y-2">
+              <div className="max-h-48 space-y-2 overflow-y-auto">
                 {(detail.comments || []).map((c: any) => (
-                  <div
-                    key={c._id}
-                    className="rounded-lg border border-border bg-surface p-3 text-sm"
-                  >
-                    <div className="font-semibold">
-                      {c.author?.fullName}{' '}
-                      <span className="text-xs font-normal text-neutral">
-                        {new Date(c.createdAt).toLocaleString('en-IN')}
-                        {c.isInternal ? ' · internal' : ''}
+                  <div key={c._id} className="rounded-lg bg-surface px-3 py-2 text-sm">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="font-semibold text-text-primary">
+                        {c.author?.fullName || 'Staff'}
+                      </span>
+                      <span className="text-[11px] text-neutral">
+                        {c.createdAt
+                          ? new Date(c.createdAt).toLocaleString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : ''}
                       </span>
                     </div>
-                    <div className="mt-1">{c.body}</div>
+                    <p className="mt-0.5 text-text-secondary">{c.body}</p>
                   </div>
                 ))}
                 {!detailLoading && !detail.comments?.length && (
@@ -277,13 +352,12 @@ export default function TicketsPage() {
                 <Input
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
-                  placeholder="Add a reply…"
+                  placeholder="Write a reply…"
                   className="flex-1"
-                  required
                   disabled={saving}
                 />
-                <Button type="submit" disabled={saving}>
-                  Reply
+                <Button type="submit" disabled={saving || !comment.trim()} variant="secondary">
+                  Send
                 </Button>
               </form>
             </div>
