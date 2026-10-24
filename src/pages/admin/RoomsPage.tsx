@@ -284,7 +284,9 @@ export default function RoomsPage() {
         r._id === roomId ? { ...r, beds: nextBeds, bedStats: stats, capacity: nextBeds.length } : r
       )
     )
-    setDetail((d) => (d && d._id === roomId ? { ...d, beds: nextBeds, capacity: nextBeds.length } : d))
+    setDetail((d: any) =>
+      d && d._id === roomId ? { ...d, beds: nextBeds, capacity: nextBeds.length } : d
+    )
   }
 
   async function removeBed(bed: any, room: any) {
