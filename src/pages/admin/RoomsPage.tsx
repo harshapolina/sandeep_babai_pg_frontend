@@ -90,11 +90,19 @@ export default function RoomsPage() {
   const [detail, setDetail] = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const initialLoad = useRef(true)
+  const [sharingPrices, setSharingPrices] = useState<Record<string, number>>({
+    single: 15000,
+    double: 12000,
+    triple: 10000,
+    quad: 8000,
+    dorm: 6000,
+    other: 9000,
+  })
   const [form, setForm] = useState({
     floorId: '',
     roomNumber: '',
     capacity: '2',
-    rentAmount: '9000',
+    rentAmount: '12000',
     roomType: 'double',
     description: '',
     amenities: 'Fan, Wardrobe, Study Table',
@@ -105,6 +113,18 @@ export default function RoomsPage() {
     moveInDate: '',
     rentAmount: '',
   })
+
+  function rentForType(roomType: string, capacity?: string | number) {
+    const type = String(roomType || '').toLowerCase()
+    if (sharingPrices[type] != null) return sharingPrices[type]
+    const cap = Number(capacity) || 0
+    if (cap <= 1) return sharingPrices.single
+    if (cap === 2) return sharingPrices.double
+    if (cap === 3) return sharingPrices.triple
+    if (cap === 4) return sharingPrices.quad
+    if (cap >= 5) return sharingPrices.dorm
+    return sharingPrices.other
+  }
 
   const bedCounts = useMemo(() => {
     const allBeds = rooms.flatMap((r) => r.beds || [])
@@ -177,6 +197,21 @@ export default function RoomsPage() {
 
   useEffect(() => {
     loadProperties().catch((e) => toast.error(e.message))
+    api
+      .get('/settings')
+      .then((r) => {
+        const sp = r.data.data?.settings?.sharingPrices
+        if (sp) {
+          setSharingPrices((prev) => ({ ...prev, ...sp }))
+          setForm((f) => ({
+            ...f,
+            rentAmount: String(
+              sp[f.roomType] ?? sp.double ?? f.rentAmount
+            ),
+          }))
+        }
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -501,7 +536,11 @@ export default function RoomsPage() {
                   setForm((f) => ({
                     ...f,
                     floorId: floors[0]?._id || '',
-                    rentAmount: String(selectedProperty?.defaultRentAmount || 9000),
+                    rentAmount: String(
+                      rentForType(f.roomType, f.capacity) ||
+                        selectedProperty?.defaultRentAmount ||
+                        12000
+                    ),
                   }))
                   setCreateOpen(true)
                 }}
@@ -1071,23 +1110,49 @@ export default function RoomsPage() {
           <Select
             label="Type"
             value={form.roomType}
-            onChange={(e) => setForm({ ...form, roomType: e.target.value })}
+            onChange={(e) => {
+              const roomType = e.target.value
+              const capacity =
+                roomType === 'single'
+                  ? '1'
+                  : roomType === 'double'
+                    ? '2'
+                    : roomType === 'triple'
+                      ? '3'
+                      : roomType === 'quad'
+                        ? '4'
+                        : form.capacity
+              setForm({
+                ...form,
+                roomType,
+                capacity,
+                rentAmount: String(rentForType(roomType, capacity)),
+              })
+            }}
           >
-            <option value="single">Single</option>
-            <option value="double">Double</option>
-            <option value="triple">Triple</option>
-            <option value="quad">Quad</option>
+            <option value="single">1 sharing (single)</option>
+            <option value="double">2 sharing</option>
+            <option value="triple">3 sharing</option>
+            <option value="quad">4 sharing</option>
+            <option value="dorm">5+ / dorm</option>
           </Select>
           <Input
             label="Beds (min 1)"
             type="number"
             min={1}
             value={form.capacity}
-            onChange={(e) => setForm({ ...form, capacity: e.target.value })}
+            onChange={(e) => {
+              const capacity = e.target.value
+              setForm({
+                ...form,
+                capacity,
+                rentAmount: String(rentForType(form.roomType, capacity)),
+              })
+            }}
             required
           />
           <Input
-            label="Rent amount"
+            label="Rent / bed (from Settings → Bed pricing)"
             type="number"
             value={form.rentAmount}
             onChange={(e) => setForm({ ...form, rentAmount: e.target.value })}

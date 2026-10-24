@@ -5,6 +5,7 @@ import {
   Bot,
   Building2,
   ExternalLink,
+  IndianRupee,
   Mail,
   RefreshCw,
   Save,
@@ -35,6 +36,15 @@ type ChatbotForm = {
   hasApiKey?: boolean
 }
 
+type SharingPricesForm = {
+  single: string
+  double: string
+  triple: string
+  quad: string
+  dorm: string
+  other: string
+}
+
 type SettingsForm = {
   name: string
   email: string
@@ -50,16 +60,28 @@ type SettingsForm = {
   ticketCategories: string
   mail: MailForm
   chatbot: ChatbotForm
+  sharingPrices: SharingPricesForm
+  applySharingPrices: boolean
 }
 
-type TabId = 'organization' | 'defaults' | 'email' | 'chatbot' | 'account'
+type TabId = 'organization' | 'defaults' | 'pricing' | 'email' | 'chatbot' | 'account'
 
 const TABS: { id: TabId; label: string; icon: typeof Building2 }[] = [
   { id: 'organization', label: 'Organization', icon: Building2 },
   { id: 'defaults', label: 'Defaults', icon: SlidersHorizontal },
+  { id: 'pricing', label: 'Bed pricing', icon: IndianRupee },
   { id: 'email', label: 'Email / SMTP', icon: Mail },
   { id: 'chatbot', label: 'AI Chatbot', icon: Bot },
   { id: 'account', label: 'Account', icon: UserRound },
+]
+
+const SHARING_FIELDS: { key: keyof SharingPricesForm; label: string; hint: string }[] = [
+  { key: 'single', label: '1 sharing (single)', hint: '1 bed per room' },
+  { key: 'double', label: '2 sharing', hint: '2 beds per room' },
+  { key: 'triple', label: '3 sharing', hint: '3 beds per room' },
+  { key: 'quad', label: '4 sharing', hint: '4 beds per room' },
+  { key: 'dorm', label: '5+ / dorm', hint: '5 or more beds' },
+  { key: 'other', label: 'Other', hint: 'Fallback type' },
 ]
 
 const empty: SettingsForm = {
@@ -91,6 +113,15 @@ const empty: SettingsForm = {
     model: '',
     apiKey: '',
   },
+  sharingPrices: {
+    single: '15000',
+    double: '12000',
+    triple: '10000',
+    quad: '8000',
+    dorm: '6000',
+    other: '9000',
+  },
+  applySharingPrices: true,
 }
 
 export default function SettingsPage() {
@@ -111,6 +142,7 @@ export default function SettingsPage() {
       const s = d.settings || {}
       const m = s.mail || {}
       const c = s.chatbot || {}
+      const sp = s.sharingPrices || {}
       setForm({
         name: d.name || '',
         email: d.email || '',
@@ -142,6 +174,15 @@ export default function SettingsPage() {
           apiKey: c.hasApiKey ? '********' : '',
           hasApiKey: Boolean(c.hasApiKey),
         },
+        sharingPrices: {
+          single: String(sp.single ?? 15000),
+          double: String(sp.double ?? 12000),
+          triple: String(sp.triple ?? 10000),
+          quad: String(sp.quad ?? 8000),
+          dorm: String(sp.dorm ?? 6000),
+          other: String(sp.other ?? 9000),
+        },
+        applySharingPrices: true,
       })
       api
         .get('/chat/status')
@@ -161,7 +202,7 @@ export default function SettingsPage() {
     if (!isAdmin) return
     setSaving(true)
     try {
-      await api.patch('/settings', {
+      const { data } = await api.patch('/settings', {
         name: form.name,
         email: form.email,
         phone: form.phone,
@@ -178,6 +219,15 @@ export default function SettingsPage() {
             .split(',')
             .map((c) => c.trim())
             .filter(Boolean),
+          sharingPrices: {
+            single: Number(form.sharingPrices.single) || 0,
+            double: Number(form.sharingPrices.double) || 0,
+            triple: Number(form.sharingPrices.triple) || 0,
+            quad: Number(form.sharingPrices.quad) || 0,
+            dorm: Number(form.sharingPrices.dorm) || 0,
+            other: Number(form.sharingPrices.other) || 0,
+          },
+          applySharingPrices: form.applySharingPrices,
           mail: {
             enabled: form.mail.enabled,
             host: form.mail.host,
@@ -196,7 +246,7 @@ export default function SettingsPage() {
           },
         },
       })
-      toast.success('Settings saved')
+      toast.success(data.message || 'Settings saved')
       await load()
     } catch (err: any) {
       toast.error(err.message)
@@ -384,6 +434,52 @@ export default function SettingsPage() {
                   <ExternalLink size={12} />
                 </Link>
               </div>
+            </Panel>
+          )}
+
+          {tab === 'pricing' && (
+            <Panel
+              title="Bed pricing by sharing"
+              hint="Set monthly rent per bed for each sharing type. Example: 3 sharing = ₹10,000 per bed."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                {SHARING_FIELDS.map(({ key, label, hint }) => (
+                  <Input
+                    key={key}
+                    label={label}
+                    type="number"
+                    min={0}
+                    value={form.sharingPrices[key]}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        sharingPrices: {
+                          ...form.sharingPrices,
+                          [key]: e.target.value,
+                        },
+                      })
+                    }
+                    disabled={!isAdmin}
+                    placeholder="0"
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-text-secondary">
+                Used when creating rooms/beds and assigning tenants. Hint:{' '}
+                {SHARING_FIELDS.map((f) => f.hint).join(' · ')}
+              </p>
+              <label className="mt-4 flex items-center gap-2 text-sm font-semibold text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={form.applySharingPrices}
+                  onChange={(e) =>
+                    setForm({ ...form, applySharingPrices: e.target.checked })
+                  }
+                  disabled={!isAdmin}
+                  className="h-4 w-4 rounded border-border"
+                />
+                Apply these prices to all existing rooms &amp; beds on save
+              </label>
             </Panel>
           )}
 
