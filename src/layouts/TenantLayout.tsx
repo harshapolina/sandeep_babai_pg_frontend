@@ -11,7 +11,6 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { cn } from '../components/ui'
-import ChatBotWidget from '../components/ChatBotWidget'
 
 const nav = [
   { to: '/tenant', label: 'Home', icon: Home, end: true },
@@ -74,8 +73,6 @@ export default function TenantLayout() {
           ))}
         </div>
       </nav>
-
-      <ChatBotWidget variant="tenant" />
     </div>
   )
 }
